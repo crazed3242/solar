@@ -1,0 +1,6 @@
+{
+  "name": "HelioTrack MMS - Solar Plant Maintenance & Repair Tracking",
+  "description": "ACID-compliant Solar Power Plant Maintenance Management System with technician assignment, work order tracking, repair history, inventory management, and audit trails.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
