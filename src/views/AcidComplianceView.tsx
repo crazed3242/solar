@@ -200,21 +200,21 @@ export const AcidComplianceView: React.FC = () => {
           <div>
             <strong className="text-amber-400">2. Invariant Consistency Constraints:</strong>
             <p className="text-slate-400 mt-0.5">
-              The table <code className="text-cyan-400">parts_inventory</code> defines <code className="text-cyan-400">CHECK(quantity_on_hand &gt;= 0)</code>. Any update that would drive inventory negative is rejected at the SQLite engine level with a constraint violation. Foreign keys are enforced with <code className="text-cyan-400">PRAGMA foreign_keys = ON;</code>.
+              The table <code className="text-cyan-400">parts_inventory</code> defines <code className="text-cyan-400">CHECK(quantity_on_hand &gt;= 0)</code>. Any update that would drive inventory negative is rejected at the PostgreSQL database level with a constraint violation. Strict relational foreign keys are enforced across all operational tables.
             </p>
           </div>
 
           <div>
             <strong className="text-amber-400">3. Concurrency & Isolation:</strong>
             <p className="text-slate-400 mt-0.5">
-              The engine operates in <code className="text-cyan-400">PRAGMA journal_mode = WAL;</code> with a <code className="text-cyan-400">busy_timeout = 5000ms</code>. Read queries never block writes, and write transactions are serialized without dirty reads or phantom updates.
+              Cloud SQL PostgreSQL provides ACID transaction isolation. Read queries execute with snapshot isolation, and write transactions are serialized with connection pooling without dirty reads or phantom updates.
             </p>
           </div>
 
           <div>
             <strong className="text-amber-400">4. Crash Durability:</strong>
             <p className="text-slate-400 mt-0.5">
-              Committed transactions are recorded in the write-ahead log (<code className="text-slate-200">heliomms.db-wal</code>) and periodically checkpointed to <code className="text-slate-200">heliomms.db</code>, ensuring non-volatile data retention across server restarts.
+              Committed transactions are recorded in PostgreSQL Write-Ahead Logs (WAL) on Google Cloud SQL persistent disks, ensuring non-volatile data retention across restarts and failovers.
             </p>
           </div>
         </div>

@@ -17,9 +17,6 @@ const PORT = process.env.PORT || 3000;
 app.use(express.json({ limit: '20mb' }));
 app.use(express.urlencoded({ extended: true, limit: '20mb' }));
 
-// Initialize SQLite database and seeds
-initDb();
-
 // Mount API routes
 app.use('/api', apiRouter);
 
@@ -29,6 +26,9 @@ app.get('/api/health', (_req, res) => {
 });
 
 async function startServer() {
+  // Initialize Cloud SQL PostgreSQL database, seeds, and admin account
+  await initDb();
+
   const isProd = process.env.NODE_ENV === 'production';
 
   if (!isProd) {

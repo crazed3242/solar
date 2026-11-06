@@ -39,13 +39,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const users = await api.getUsersList();
         setAllUsers(users);
 
-        const savedId = localStorage.getItem('heliomms_active_user_id');
+        const savedId = localStorage.getItem('solar_plant_active_user_id');
         if (savedId) {
           const selected = users.find((u) => String(u.id) === savedId);
           if (selected && selected.status === 'active') {
             setCurrentUser(selected);
           } else {
-            localStorage.removeItem('heliomms_active_user_id');
+            localStorage.removeItem('solar_plant_active_user_id');
             setCurrentUser(null);
           }
         } else {
@@ -86,7 +86,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const res = await api.login(usernameOrEmail, password);
       setCurrentUser(res.user);
-      localStorage.setItem('heliomms_active_user_id', String(res.user.id));
+      localStorage.setItem('solar_plant_active_user_id', String(res.user.id));
       await refreshNotifications();
     } finally {
       setIsLoading(false);
@@ -105,7 +105,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const res = await api.registerEmployee(data);
       setCurrentUser(res.user);
-      localStorage.setItem('heliomms_active_user_id', String(res.user.id));
+      localStorage.setItem('solar_plant_active_user_id', String(res.user.id));
       const updatedList = await api.getUsersList();
       setAllUsers(updatedList);
       await refreshNotifications();
@@ -116,7 +116,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const logout = () => {
     setCurrentUser(null);
-    localStorage.removeItem('heliomms_active_user_id');
+    localStorage.removeItem('solar_plant_active_user_id');
   };
 
   const switchUser = async (userId: number) => {
@@ -124,7 +124,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const res = await api.switchDemoUser(userId);
       setCurrentUser(res.user);
-      localStorage.setItem('heliomms_active_user_id', String(res.user.id));
+      localStorage.setItem('solar_plant_active_user_id', String(res.user.id));
       // Refresh user list to sync workloads
       const updatedList = await api.getUsersList();
       setAllUsers(updatedList);
