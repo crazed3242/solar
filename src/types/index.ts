@@ -1,4 +1,14 @@
-export type UserRole = 'admin' | 'technician';
+export type UserRole = 'admin' | 'manager' | 'employee' | 'technician';
+
+export const isAdminRole = (role?: string | null): boolean => role === 'admin';
+export const isManagerRole = (role?: string | null): boolean => role === 'manager';
+export const isEmployeeRole = (role?: string | null): boolean => role === 'employee' || role === 'technician';
+
+export const getRoleLabel = (role?: string | null): string => {
+  if (role === 'admin') return 'System Administrator';
+  if (role === 'manager') return 'Operations Manager';
+  return 'Field Employee';
+};
 
 export interface User {
   id: number;
@@ -8,7 +18,7 @@ export interface User {
   role: UserRole;
   department: string;
   phone?: string;
-  status: 'active' | 'deactivated';
+  status: 'active' | 'pending' | 'deactivated';
   created_at?: string;
   active_workload?: number;
   completed_jobs?: number;

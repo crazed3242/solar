@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, Wrench, ShieldAlert, Cpu, Calendar, AlertCircle } from 'lucide-react';
-import { Equipment, User, MaintenanceType, WorkOrderPriority } from '../types';
+import { Equipment, User, MaintenanceType, WorkOrderPriority, isEmployeeRole } from '../types';
 import { api } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
@@ -44,7 +44,7 @@ export const CreateWorkOrderModal: React.FC<CreateWorkOrderModalProps> = ({
           api.getUsers(),
         ]);
         setEquipmentList(eqRes);
-        setTechnicians(usersRes.filter((u) => u.role === 'technician' && u.status === 'active'));
+        setTechnicians(usersRes.filter((u) => isEmployeeRole(u.role) && u.status === 'active'));
 
         if (initialEquipmentId) {
           const match = eqRes.find((e) => e.id === initialEquipmentId);
@@ -205,28 +205,30 @@ export const CreateWorkOrderModal: React.FC<CreateWorkOrderModalProps> = ({
               </select>
             </div>
 
-            <div>
-              <label className="block text-slate-400 font-mono text-[11px] mb-1">
-                Technician Assignment (Optional)
-              </label>
-              <select
-                value={assignedTechnicianId}
-                onChange={(e) => setAssignedTechnicianId(e.target.value ? Number(e.target.value) : '')}
-                className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-slate-200 text-xs"
-              >
-                <option value="">🚨 Open Area Request (Any technician can accept)</option>
-                {technicians.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    Assign specifically to: {t.full_name} ({t.employee_id} • {t.active_workload || 0} active jobs)
-                  </option>
-                ))}
-              </select>
-              <p className="text-[10px] text-amber-400/90 mt-1">
-                {assignedTechnicianId
-                  ? 'This task will be directly assigned to the selected technician.'
-                  : 'Broadcasts repair request to the area. Field technicians can view and accept it.'}
-              </p>
-            </div>
+            {currentUser?.role === 'manager' && (
+              <div>
+                <label className="block text-slate-400 font-mono text-[11px] mb-1">
+                  Employee Assignment (Optional)
+                </label>
+                <select
+                  value={assignedTechnicianId}
+                  onChange={(e) => setAssignedTechnicianId(e.target.value ? Number(e.target.value) : '')}
+                  className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-slate-200 text-xs"
+                >
+                  <option value="">🚨 Open Area Request (Any employee can accept)</option>
+                  {technicians.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      Assign specifically to: {t.full_name} ({t.employee_id} • {t.active_workload || 0} active jobs)
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[10px] text-amber-400/90 mt-1">
+                  {assignedTechnicianId
+                    ? 'This task will be directly assigned to the selected employee.'
+                    : 'Broadcasts repair request to the area. Field employees can view and accept it.'}
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Problem Description */}

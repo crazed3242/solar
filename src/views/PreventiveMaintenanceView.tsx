@@ -12,14 +12,14 @@ import {
   ShieldCheck,
   CheckCircle2
 } from 'lucide-react';
-import { MaintenanceSchedule, ChecklistTemplate, Equipment, User } from '../types';
+import { MaintenanceSchedule, ChecklistTemplate, Equipment, User, isEmployeeRole } from '../types';
 import { api } from '../services/api';
 import { formatPHTDate } from '../utils/formatters';
 import { useAuth } from '../context/AuthContext';
 
 export const PreventiveMaintenanceView: React.FC = () => {
   const { currentUser } = useAuth();
-  const isAdmin = currentUser?.role === 'admin';
+  const isAdmin = currentUser?.role === 'manager' || currentUser?.role === 'admin';
 
   const [schedules, setSchedules] = useState<MaintenanceSchedule[]>([]);
   const [checklists, setChecklists] = useState<ChecklistTemplate[]>([]);
@@ -54,7 +54,7 @@ export const PreventiveMaintenanceView: React.FC = () => {
       setSchedules(schedRes);
       setChecklists(chkRes);
       setEquipmentList(eqRes);
-      setTechnicians(usersRes.filter((u) => u.role === 'technician'));
+      setTechnicians(usersRes.filter((u) => isEmployeeRole(u.role)));
     } catch (err) {
       console.error('Failed to load PM data:', err);
     } finally {

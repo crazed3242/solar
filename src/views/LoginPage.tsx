@@ -15,6 +15,8 @@ import {
   BadgeCheck,
   Zap,
   MapPin,
+  ShieldCheck,
+  CheckCircle2,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
@@ -28,8 +30,10 @@ export const LoginPage: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pendingSuccess, setPendingSuccess] = useState<string | null>(null);
 
-  // Employee Sign Up Form State
+  // Combined Account Sign Up Form State
+  const [signupRole, setSignupRole] = useState<'employee' | 'manager'>('employee');
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [employeeId, setEmployeeId] = useState('');
@@ -44,6 +48,7 @@ export const LoginPage: React.FC = () => {
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setPendingSuccess(null);
     setLoading(true);
 
     try {
@@ -55,10 +60,11 @@ export const LoginPage: React.FC = () => {
     }
   };
 
-  // Handle Employee Registration
+  // Handle Combined Employee & Manager Registration (Requires Admin Approval)
   const handleSignupSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setPendingSuccess(null);
     setEmailConflict(false);
 
     if (signupPassword !== confirmPassword) {
@@ -74,17 +80,30 @@ export const LoginPage: React.FC = () => {
     setLoading(true);
 
     try {
-      await registerEmployee({
+      const res = await registerEmployee({
         full_name: fullName.trim(),
         email: email.trim(),
         password: signupPassword.trim(),
+        role: signupRole,
         employee_id: employeeId.trim() || undefined,
         department,
         phone: phone.trim(),
       });
-      // Context will auto-login newly created employee into field terminal
+      setFullName('');
+      setEmail('');
+      setEmployeeId('');
+      setPhone('+63 9');
+      setSignupPassword('');
+      setConfirmPassword('');
+      setSignupRole('employee');
+      setDepartment('Electrical Maintenance');
+      setPendingSuccess(
+        res.message ||
+          'Account registration submitted! An Administrator must approve your account before you can sign in.'
+      );
+      setAuthMode('signin');
     } catch (err: any) {
-      const msg = err.message || 'Failed to register employee';
+      const msg = err.message || 'Failed to register account';
       setError(msg);
       if (msg.toLowerCase().includes('email') || msg.toLowerCase().includes('used email')) {
         setEmailConflict(true);
@@ -177,6 +196,7 @@ export const LoginPage: React.FC = () => {
                 onClick={() => {
                   setAuthMode('signup');
                   setError(null);
+                  setPendingSuccess(null);
                   setEmailConflict(false);
                 }}
                 className={`flex-1 py-2.5 rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
@@ -186,9 +206,20 @@ export const LoginPage: React.FC = () => {
                 }`}
               >
                 <UserPlus className="w-3.5 h-3.5" />
-                <span>Employee Sign Up</span>
+                <span>Account Sign Up</span>
               </button>
             </div>
+
+            {/* Pending Admin Approval Success Banner */}
+            {pendingSuccess && (
+              <div className="mb-5 p-3.5 rounded-xl bg-emerald-500/15 border border-emerald-500/40 text-emerald-200 text-xs flex items-start gap-2.5 shadow-sm">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                <div className="leading-relaxed">
+                  <span className="font-bold text-emerald-300 block mb-0.5">Registration Submitted — Awaiting Admin Approval</span>
+                  <span>{pendingSuccess}</span>
+                </div>
+              </div>
+            )}
 
             {/* Error Message Alert */}
             {error && (
@@ -206,7 +237,7 @@ export const LoginPage: React.FC = () => {
                 <form onSubmit={handleLoginSubmit} className="space-y-4">
                   <div>
                     <label className="block text-xs font-mono text-slate-300 mb-1.5 font-medium">
-                      Username or Employee ID
+                      Email, Employee ID, or Full Name
                     </label>
                     <div className="relative">
                       <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
@@ -216,9 +247,10 @@ export const LoginPage: React.FC = () => {
                         type="text"
                         required
                         autoFocus
+                        autoComplete="username"
                         value={username}
                         onChange={(e) => setUsername(e.target.value)}
-                        placeholder="Enter username or ID"
+                        placeholder="Enter email, EMP-TEC-101, or full name"
                         className="w-full pl-10 pr-3 py-2.5 bg-slate-950/80 border border-slate-700/80 rounded-xl text-slate-100 placeholder-slate-500 text-sm focus:outline-hidden focus:border-amber-400 focus:ring-2 focus:ring-amber-500/20 transition-all font-mono"
                       />
                     </div>
@@ -235,6 +267,7 @@ export const LoginPage: React.FC = () => {
                       <input
                         type={showPassword ? 'text' : 'password'}
                         required
+                        autoComplete="current-password"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                         placeholder="••••••••"
@@ -277,26 +310,62 @@ export const LoginPage: React.FC = () => {
                     onClick={() => {
                       setAuthMode('signup');
                       setError(null);
+                      setPendingSuccess(null);
                     }}
                     className="text-xs text-slate-400 hover:text-amber-300 transition-colors cursor-pointer"
                   >
-                    New technician or maintenance staff?{' '}
+                    New plant employee or manager?{' '}
                     <span className="text-cyan-400 hover:underline font-semibold ml-1">
-                      Create Employee Account
+                      Request Company Account
                     </span>
                   </button>
                 </div>
               </div>
             ) : (
               /* ======================================================== */
-              /* 2. EMPLOYEE SIGN UP FORM MODE */
+              /* 2. COMBINED EMPLOYEE & MANAGER SIGN UP FORM MODE */
               /* ======================================================== */
               <div>
+                <div className="mb-3.5 p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-[11px] text-amber-200 flex items-start gap-2">
+                  <ShieldCheck className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                  <span>
+                    Company access verification: new <strong>Employee</strong> and <strong>Manager</strong> accounts stay locked until approved by an Administrator.
+                  </span>
+                </div>
+
                 <form onSubmit={handleSignupSubmit} className="space-y-3.5 text-xs">
+                  {/* Account Role List Box */}
+                  <div>
+                    <label className="block text-slate-300 font-mono text-[11px] mb-1 font-medium">
+                      Account Role / Position
+                    </label>
+                    <div className="relative">
+                      <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-cyan-400">
+                        <ShieldCheck className="w-4 h-4" />
+                      </div>
+                      <select
+                        value={signupRole}
+                        onChange={(e) => {
+                          const nextRole = e.target.value as 'employee' | 'manager';
+                          setSignupRole(nextRole);
+                          if (nextRole === 'manager' && department === 'Electrical Maintenance') {
+                            setDepartment('Plant Operations & Dispatch');
+                          } else if (nextRole === 'employee' && department === 'Plant Operations & Dispatch') {
+                            setDepartment('Electrical Maintenance');
+                          }
+                        }}
+                        className="w-full pl-10 pr-3 py-2 bg-slate-950/80 border border-cyan-500/40 rounded-xl text-slate-100 text-xs font-semibold focus:outline-hidden focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/20 transition-all h-[38px] cursor-pointer"
+                      >
+                        <option value="employee">Employee (Field Technician)</option>
+                        <option value="manager">Manager (Operations, Work Assignment & Inventory)</option>
+                      </select>
+                    </div>
+                  </div>
+
                   {/* Full Name */}
                   <div>
                     <label className="block text-slate-300 font-mono text-[11px] mb-1 font-medium">
-                      Employee Full Name
+                      Full Name
                     </label>
                     <div className="relative">
                       <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
@@ -305,7 +374,7 @@ export const LoginPage: React.FC = () => {
                       <input
                         type="text"
                         required
-                        placeholder="e.g. Elena Santos"
+                        placeholder={signupRole === 'manager' ? 'e.g. Marco Reyes' : 'e.g. Elena Santos'}
                         value={fullName}
                         onChange={(e) => setFullName(e.target.value)}
                         className="w-full pl-10 pr-3 py-2 bg-slate-950/80 border border-slate-700/80 rounded-xl text-slate-100 placeholder-slate-500 text-xs focus:outline-hidden focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/20 transition-all"
@@ -365,13 +434,15 @@ export const LoginPage: React.FC = () => {
                           <option value="Solar PV Array & DC Systems">PV Array & DC Systems</option>
                           <option value="High Voltage & Substation">High Voltage & Substation</option>
                           <option value="SCADA & Weather Station">SCADA & Weather Station</option>
+                          <option value="Plant Operations & Dispatch">Plant Operations & Dispatch</option>
+                          <option value="Inventory & Warehouse Management">Inventory & Warehouse Management</option>
                         </select>
                       </div>
                     </div>
 
                     <div>
                       <label className="block text-slate-300 font-mono text-[11px] mb-1 font-medium">
-                        Employee ID
+                        Employee ID (Optional)
                       </label>
                       <div className="relative">
                         <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
@@ -379,7 +450,7 @@ export const LoginPage: React.FC = () => {
                         </div>
                         <input
                           type="text"
-                          placeholder="e.g. EMP-TEC-105"
+                          placeholder={signupRole === 'manager' ? 'e.g. EMP-MGR-102' : 'e.g. EMP-TEC-105'}
                           value={employeeId}
                           onChange={(e) => setEmployeeId(e.target.value)}
                           className="w-full pl-10 pr-3 py-2 bg-slate-950/80 border border-slate-700/80 rounded-xl text-slate-100 placeholder-slate-500 text-xs font-mono focus:outline-hidden focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/20 transition-all h-[38px]"
@@ -420,6 +491,7 @@ export const LoginPage: React.FC = () => {
                         <input
                           type={showSignupPassword ? 'text' : 'password'}
                           required
+                          autoComplete="new-password"
                           placeholder="••••••••"
                           value={signupPassword}
                           onChange={(e) => setSignupPassword(e.target.value)}
@@ -466,11 +538,11 @@ export const LoginPage: React.FC = () => {
                     {loading ? (
                       <>
                         <div className="w-4 h-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
-                        <span>Validating & Creating Account...</span>
+                        <span>Submitting Account Request...</span>
                       </>
                     ) : (
                       <>
-                        <span>Complete Employee Registration</span>
+                        <span>Submit {signupRole === 'manager' ? 'Manager' : 'Employee'} Sign Up for Approval</span>
                         <ArrowRight className="w-4 h-4" />
                       </>
                     )}

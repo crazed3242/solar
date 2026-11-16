@@ -18,35 +18,61 @@ import {
   RotateCcw
 } from 'lucide-react';
 import { api } from '../services/api';
-import { WorkOrder, Equipment } from '../types';
-import { formatCurrency, formatPHTDate, getStatusBadge, getPriorityBadge } from '../utils/formatters';
+import { WorkOrder, AuditLogItem, isAdminRole, isManagerRole } from '../types';
+import { formatCurrency, formatPHTDateTime, getStatusBadge, getPriorityBadge } from '../utils/formatters';
+import { useAuth } from '../context/AuthContext';
 
 interface AdminDashboardProps {
   onNavigate: (tab: string) => void;
   onSelectWorkOrder: (woId: number) => void;
   onCreateWorkOrder: () => void;
+  refreshKey?: number;
 }
 
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onNavigate,
   onSelectWorkOrder,
   onCreateWorkOrder,
+  refreshKey = 0,
 }) => {
+  const { currentUser } = useAuth();
+  const isAdmin = isAdminRole(currentUser?.role);
+  const isManager = isManagerRole(currentUser?.role);
+
   const [reportsData, setReportsData] = useState<any>(null);
   const [pendingApprovals, setPendingApprovals] = useState<WorkOrder[]>([]);
-  const [criticalOrders, setCriticalOrders] = useState<WorkOrder[]>([]);
+  const [recentLogins, setRecentLogins] = useState<AuditLogItem[]>([]);
+  const [pendingAccountsCount, setPendingAccountsCount] = useState<number>(0);
   const [loading, setLoading] = useState<boolean>(true);
   const [resetting, setResetting] = useState<boolean>(false);
+  const [resetError, setResetError] = useState<string | null>(null);
 
   const loadDashboard = async () => {
     try {
-      const [rep, wos] = await Promise.all([
-        api.getReportsData(),
-        api.getWorkOrders(),
+      const [repRes, wos, equips, loginLogs, allUsersList] = await Promise.all([
+        api.getReportsData().catch(() => null),
+        api.getWorkOrders().catch(() => []),
+        api.getEquipment().catch(() => []),
+        isAdmin ? api.getAuditLogs({ action: 'USER_LOGIN', limit: 6 }).catch(() => []) : Promise.resolve([]),
+        isAdmin ? api.getUsers().catch(() => []) : Promise.resolve([]),
       ]);
-      setReportsData(rep);
+
+      const safeRep = repRes && repRes.kpis ? repRes : {
+        kpis: {
+          totalEquipment: equips.length,
+          openWorkOrders: wos.filter((w) => ['open', 'assigned'].includes(w.status)).length,
+          ongoingRepairs: wos.filter((w) => ['acknowledged', 'in_progress', 'on_hold'].includes(w.status)).length,
+          criticalFailures: wos.filter((w) => w.priority === 'critical' && !['approved', 'closed'].includes(w.status)).length,
+          grandTotalCost: wos.reduce((acc, w) => acc + (Number(w.total_cost) || 0), 0),
+        },
+        techPerformance: [],
+        equipFailures: [],
+      };
+
+      setReportsData(safeRep);
       setPendingApprovals(wos.filter((w) => w.status === 'completed_pending_review'));
-      setCriticalOrders(wos.filter((w) => w.priority === 'critical' && !['approved', 'closed'].includes(w.status)));
+      setRecentLogins(loginLogs);
+      setPendingAccountsCount(allUsersList.filter((u) => u.status === 'pending').length);
     } catch (err) {
       console.error('Failed to load dashboard:', err);
     } finally {
@@ -56,18 +82,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   useEffect(() => {
     loadDashboard();
-  }, []);
+  }, [isAdmin, refreshKey]);
 
   const handleResetSystem = async () => {
     if (!window.confirm('Are you sure you want to clear all data and start over fresh? This removes all work orders, maintenance reports, activity history, and non-admin accounts so you can study the system from scratch.')) {
       return;
     }
+    setResetError(null);
     setResetting(true);
     try {
       await api.resetSystemClean();
       await loadDashboard();
     } catch (err: any) {
-      alert(err.message || 'Failed to reset system');
+      setResetError(err.message || 'Failed to reset system');
     } finally {
       setResetting(false);
     }
@@ -94,41 +121,99 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-lg font-bold text-slate-100">Solar Panel Power Plant Command</h2>
+              <h2 className="text-lg font-bold text-slate-100">
+                {isManager ? 'Operations Manager Command' : 'Admin Security & Plant Command'}
+              </h2>
               <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-semibold">
                 KIRAHON, MISAMIS ORIENTAL
               </span>
             </div>
             <p className="text-xs text-slate-400 mt-0.5">
-              Kirahon, Misamis Oriental • Philippine Standard Time (PHT, UTC+8) • Maintenance Command
+              {isManager
+                ? 'Assign work orders to plant employees, oversee warehouse inventory, and review maintenance work'
+                : 'Monitor user logins, audit trail logs, user accounts, and overall plant operations'}
             </p>
           </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <button
-            onClick={() => onNavigate('acid_compliance')}
-            className="px-3 py-1.5 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-300 text-xs font-semibold flex items-center gap-1.5 transition-colors"
-          >
-            <DatabaseZap className="w-3.5 h-3.5 text-amber-400" /> ACID Verification Suite
-          </button>
-          <button
-            onClick={handleResetSystem}
-            disabled={resetting}
-            className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-rose-950/40 text-slate-300 hover:text-rose-300 border border-slate-700 hover:border-rose-700/50 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
-            title="Wipe operational data and start over clean"
-          >
-            <RotateCcw className={`w-3.5 h-3.5 ${resetting ? 'animate-spin text-rose-400' : 'text-slate-400'}`} />
-            {resetting ? 'Resetting...' : 'Reset to Clean Slate'}
-          </button>
-          <button
-            onClick={onCreateWorkOrder}
-            className="px-3.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold flex items-center gap-1.5 shadow-md transition-all cursor-pointer"
-          >
-            <Plus className="w-3.5 h-3.5" /> Log Maintenance Work
-          </button>
+          {isAdmin && (
+            <>
+              <button
+                onClick={() => onNavigate('audit')}
+                className="px-3 py-1.5 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/40 text-emerald-300 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <Users className="w-3.5 h-3.5 text-emerald-400" /> Who Logged In / Audit Logs
+              </button>
+              <button
+                onClick={() => onNavigate('acid_compliance')}
+                className="px-3 py-1.5 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-300 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <DatabaseZap className="w-3.5 h-3.5 text-amber-400" /> ACID Verification Suite
+              </button>
+              <button
+                onClick={handleResetSystem}
+                disabled={resetting}
+                className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-rose-950/40 text-slate-300 hover:text-rose-300 border border-slate-700 hover:border-rose-700/50 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+                title="Wipe operational data and start over clean"
+              >
+                <RotateCcw className={`w-3.5 h-3.5 ${resetting ? 'animate-spin text-rose-400' : 'text-slate-400'}`} />
+                {resetting ? 'Resetting...' : 'Reset to Clean Slate'}
+              </button>
+            </>
+          )}
+          {isManager && (
+            <>
+              <button
+                onClick={() => onNavigate('inventory')}
+                className="px-3 py-1.5 rounded-lg bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/40 text-cyan-300 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+              >
+                View Spare Parts Inventory →
+              </button>
+              <button
+                onClick={onCreateWorkOrder}
+                className="px-3.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold flex items-center gap-1.5 shadow-md transition-all cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" /> Assign / Create Work Order
+              </button>
+            </>
+          )}
         </div>
       </div>
+
+      {resetError && (
+        <div className="p-3 rounded-xl bg-rose-500/15 border border-rose-500/40 text-rose-300 text-xs flex items-center justify-between">
+          <span>{resetError}</span>
+          <button onClick={() => setResetError(null)} className="font-mono text-[11px] cursor-pointer">
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      {/* Pending Account Approvals Alert Banner (Admin Only) */}
+      {isAdmin && pendingAccountsCount > 0 && (
+        <div className="p-4 rounded-xl bg-amber-500/15 border border-amber-500/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-lg bg-amber-500/20 text-amber-400 flex items-center justify-center shrink-0">
+              <Users className="w-5 h-5" />
+            </div>
+            <div>
+              <span className="font-bold text-amber-300">
+                {pendingAccountsCount} New Account{pendingAccountsCount > 1 ? 's' : ''} Waiting for Admin Approval
+              </span>
+              <p className="text-slate-300 mt-0.5">
+                New sign-ups cannot log in until you verify and approve them under User Management.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => onNavigate('users')}
+            className="px-3.5 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shrink-0 transition-colors cursor-pointer"
+          >
+            Review Pending Accounts →
+          </button>
+        </div>
+      )}
 
       {/* KPI Cards Strip */}
       <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-4 gap-3">
@@ -170,6 +255,63 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           <span className="text-[10px] text-slate-500 font-mono mt-0.5 block">Labor + Issued Spare Parts</span>
         </div>
       </div>
+
+      {/* Admin Recent User Logins Card */}
+      {isAdmin && (
+        <div className="p-5 rounded-2xl bg-slate-850 border border-slate-800 space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="font-bold text-xs uppercase tracking-wider text-slate-200 flex items-center gap-2">
+              <Users className="w-4 h-4 text-emerald-400" /> Recent Account Logins
+            </h3>
+            <button
+              onClick={() => onNavigate('audit')}
+              className="text-emerald-400 hover:text-emerald-300 text-xs font-mono font-medium flex items-center gap-1 cursor-pointer"
+            >
+              View Full Login & Audit Trail →
+            </button>
+          </div>
+          {recentLogins.length === 0 ? (
+            <div className="p-4 rounded-xl bg-slate-900/40 border border-dashed border-slate-800 text-center text-slate-500 text-xs">
+              No login records captured yet. New sign-ins will appear here automatically.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 text-xs">
+              {recentLogins.map((log) => {
+                let parsed: any = {};
+                try {
+                  parsed = log.details_json ? JSON.parse(log.details_json) : {};
+                } catch {}
+                return (
+                  <div key={log.id} className="p-3 rounded-xl bg-slate-900/60 border border-slate-800 flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="font-semibold text-slate-100 truncate">
+                        {parsed.full_name || log.user_email}
+                      </div>
+                      <div className="text-[10px] font-mono text-slate-400 truncate">
+                        {log.user_email}
+                      </div>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-mono uppercase font-bold ${
+                        log.user_role === 'admin'
+                          ? 'bg-amber-500/20 text-amber-400'
+                          : log.user_role === 'manager'
+                            ? 'bg-emerald-500/20 text-emerald-400'
+                            : 'bg-cyan-500/20 text-cyan-400'
+                      }`}>
+                        {log.user_role === 'technician' ? 'employee' : log.user_role}
+                      </span>
+                      <div className="text-[10px] font-mono text-slate-500 mt-1">
+                        {formatPHTDateTime(log.created_at)}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Pending Review Alerts Banner */}
       {pendingApprovals.length > 0 && (

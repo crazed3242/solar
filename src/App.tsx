@@ -22,12 +22,14 @@ import { CreateWorkOrderModal } from './components/CreateWorkOrderModal';
 import { AdminReviewModal } from './components/AdminReviewModal';
 import { AssignTechnicianModal } from './components/AssignTechnicianModal';
 import { EquipmentHistoryModal } from './components/EquipmentHistoryModal';
-import { WorkOrder } from './types';
+import { SupabaseModal } from './components/SupabaseModal';
+import { WorkOrder, isAdminRole, isManagerRole } from './types';
 import { api } from './services/api';
 
 const AppContent: React.FC = () => {
   const { currentUser, isLoading } = useAuth();
-  const isAdmin = currentUser?.role === 'admin';
+  const isAdmin = isAdminRole(currentUser?.role);
+  const isManager = isManagerRole(currentUser?.role);
 
   // Navigation State
   const [activeTab, setActiveTab] = useState<string>('dashboard');
@@ -37,10 +39,14 @@ const AppContent: React.FC = () => {
   useEffect(() => {
     if (currentUser) {
       if (currentUser.role === 'admin') {
-        setActiveTab((prev) => (prev.startsWith('tech_') ? 'dashboard' : prev));
+        const allowedAdminTabs = ['dashboard', 'work_orders', 'daily_activity', 'equipment', 'reports', 'users', 'audit', 'acid_compliance'];
+        setActiveTab((prev) => (allowedAdminTabs.includes(prev) ? prev : 'dashboard'));
+      } else if (currentUser.role === 'manager') {
+        const allowedManagerTabs = ['dashboard', 'work_orders', 'daily_activity', 'equipment', 'preventive', 'inventory'];
+        setActiveTab((prev) => (allowedManagerTabs.includes(prev) ? prev : 'dashboard'));
       } else {
-        const allowedTechTabs = ['tech_dashboard', 'tech_work_orders', 'daily_activity', 'equipment', 'inventory'];
-        setActiveTab((prev) => (allowedTechTabs.includes(prev) ? prev : 'tech_dashboard'));
+        const allowedEmployeeTabs = ['tech_dashboard', 'tech_work_orders', 'daily_activity', 'equipment'];
+        setActiveTab((prev) => (allowedEmployeeTabs.includes(prev) ? prev : 'tech_dashboard'));
       }
     }
   }, [currentUser?.role]);
@@ -52,6 +58,9 @@ const AppContent: React.FC = () => {
   const [reviewingWO, setReviewingWO] = useState<WorkOrder | null>(null);
   const [assigningWO, setAssigningWO] = useState<WorkOrder | null>(null);
   const [historyEquipId, setHistoryEquipId] = useState<number | null>(null);
+  const [showSupabaseModal, setShowSupabaseModal] = useState<boolean>(false);
+  const [refreshTrigger, setRefreshTrigger] = useState<number>(0);
+  const [actionFeedback, setActionFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   // Load single work order details for modal
   const openWorkOrderDetail = async (woId: number) => {
@@ -65,6 +74,7 @@ const AppContent: React.FC = () => {
 
   const handleModalAction = (action: string, wo: WorkOrder) => {
     setSelectedWorkOrder(null);
+    setActionFeedback(null);
     if (action === 'submit_report') {
       setReportingWO(wo);
     } else if (action === 'review') {
@@ -74,33 +84,51 @@ const AppContent: React.FC = () => {
     } else if (action === 'accept') {
       if (currentUser) {
         api.acceptWorkOrder(wo.id, currentUser.id).then(() => {
+          setRefreshTrigger((n) => n + 1);
           openWorkOrderDetail(wo.id);
-        });
+        }).catch((err: any) => setActionFeedback({ type: 'error', message: err.message || 'Failed to accept work order' }));
       }
     } else if (action === 'acknowledge') {
       if (currentUser) {
         api.acknowledgeAssignment(wo.id, currentUser.id).then(() => {
+          setRefreshTrigger((n) => n + 1);
           openWorkOrderDetail(wo.id);
-        });
+        }).catch((err: any) => setActionFeedback({ type: 'error', message: err.message || 'Failed to acknowledge assignment' }));
       }
     } else if (action === 'start') {
       if (currentUser) {
         api.startWork(wo.id, currentUser.id).then(() => {
+          setRefreshTrigger((n) => n + 1);
           openWorkOrderDetail(wo.id);
-        });
+        }).catch((err: any) => setActionFeedback({ type: 'error', message: err.message || 'Failed to start work' }));
       }
     } else if (action === 'hold') {
       if (currentUser) {
         api.holdWork(wo.id, currentUser.id, 'Awaiting components or field clearance').then(() => {
+          setRefreshTrigger((n) => n + 1);
           openWorkOrderDetail(wo.id);
-        });
+        }).catch((err: any) => setActionFeedback({ type: 'error', message: err.message || 'Failed to put work on hold' }));
       }
     } else if (action === 'close') {
       if (currentUser) {
         api.closeWorkOrder(wo.id, currentUser.id, 'Work order verified and completed').then(() => {
+          setRefreshTrigger((n) => n + 1);
           openWorkOrderDetail(wo.id);
-        });
+        }).catch((err: any) => setActionFeedback({ type: 'error', message: err.message || 'Failed to close work order' }));
       }
+    } else if (action === 'unassign') {
+      if (currentUser) {
+        api.unassignWorkOrder(wo.id, currentUser.id, 'Assignment removed by Administrator').then(() => {
+          setRefreshTrigger((n) => n + 1);
+          setActionFeedback({ type: 'success', message: `Removed employee assignment from ${wo.work_order_code}.` });
+          openWorkOrderDetail(wo.id);
+        }).catch((err: any) => setActionFeedback({ type: 'error', message: err.message || 'Failed to remove assignment' }));
+      }
+    } else if (action === 'delete') {
+      api.deleteWorkOrder(wo.id).then(() => {
+        setRefreshTrigger((n) => n + 1);
+        setActionFeedback({ type: 'success', message: `Deleted work order ${wo.work_order_code}.` });
+      }).catch((err: any) => setActionFeedback({ type: 'error', message: err.message || 'Failed to delete work order' }));
     }
   };
 
@@ -125,6 +153,7 @@ const AppContent: React.FC = () => {
       <Header
         onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
         onNavigate={(tab) => setActiveTab(tab)}
+        onOpenSupabase={() => setShowSupabaseModal(true)}
       />
 
       <div className="flex-1 flex">
@@ -138,11 +167,27 @@ const AppContent: React.FC = () => {
 
         {/* Main Workspace Area */}
         <main className="flex-1 p-4 lg:p-6 overflow-y-auto max-w-7xl mx-auto w-full">
-          {activeTab === 'dashboard' && (
+          {actionFeedback && (
+            <div
+              className={`mb-4 p-3 rounded-xl border text-xs flex items-center justify-between gap-3 ${
+                actionFeedback.type === 'success'
+                  ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                  : 'bg-rose-500/15 border-rose-500/40 text-rose-300'
+              }`}
+            >
+              <span>{actionFeedback.message}</span>
+              <button onClick={() => setActionFeedback(null)} className="text-[11px] font-mono opacity-80 hover:opacity-100 cursor-pointer">
+                Dismiss
+              </button>
+            </div>
+          )}
+
+          {activeTab === 'dashboard' && (isAdmin || isManager) && (
             <AdminDashboard
               onNavigate={(tab) => setActiveTab(tab)}
               onSelectWorkOrder={(id) => openWorkOrderDetail(id)}
               onCreateWorkOrder={() => setShowCreateWO(true)}
+              refreshKey={refreshTrigger}
             />
           )}
 
@@ -158,6 +203,7 @@ const AppContent: React.FC = () => {
             <WorkOrdersView
               onSelectWorkOrder={(id) => openWorkOrderDetail(id)}
               onCreateWorkOrder={() => setShowCreateWO(true)}
+              refreshKey={refreshTrigger}
             />
           )}
 
@@ -174,9 +220,9 @@ const AppContent: React.FC = () => {
             />
           )}
 
-          {activeTab === 'preventive' && isAdmin && <PreventiveMaintenanceView />}
+          {activeTab === 'preventive' && isManager && <PreventiveMaintenanceView />}
 
-          {activeTab === 'inventory' && <InventoryView />}
+          {activeTab === 'inventory' && isManager && <InventoryView />}
 
           {activeTab === 'reports' && isAdmin && <ReportsView />}
 
@@ -202,6 +248,7 @@ const AppContent: React.FC = () => {
           onClose={() => setShowCreateWO(false)}
           onSuccess={() => {
             setShowCreateWO(false);
+            setRefreshTrigger((n) => n + 1);
             setActiveTab('work_orders');
           }}
         />
@@ -213,6 +260,7 @@ const AppContent: React.FC = () => {
           onClose={() => setReportingWO(null)}
           onSuccess={() => {
             setReportingWO(null);
+            setRefreshTrigger((n) => n + 1);
             openWorkOrderDetail(reportingWO.id);
           }}
         />
@@ -224,6 +272,7 @@ const AppContent: React.FC = () => {
           onClose={() => setReviewingWO(null)}
           onSuccess={() => {
             setReviewingWO(null);
+            setRefreshTrigger((n) => n + 1);
             openWorkOrderDetail(reviewingWO.id);
           }}
         />
@@ -235,6 +284,7 @@ const AppContent: React.FC = () => {
           onClose={() => setAssigningWO(null)}
           onSuccess={() => {
             setAssigningWO(null);
+            setRefreshTrigger((n) => n + 1);
             openWorkOrderDetail(assigningWO.id);
           }}
         />
@@ -250,6 +300,11 @@ const AppContent: React.FC = () => {
           }}
         />
       )}
+
+      <SupabaseModal
+        isOpen={showSupabaseModal}
+        onClose={() => setShowSupabaseModal(false)}
+      />
     </div>
   );
 };

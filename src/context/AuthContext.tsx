@@ -12,10 +12,11 @@ interface AuthContextType {
     full_name: string;
     email: string;
     password: string;
+    role?: 'employee' | 'manager';
     employee_id?: string;
     department?: string;
     phone?: string;
-  }) => Promise<void>;
+  }) => Promise<{ message: string; pending?: boolean }>;
   logout: () => void;
   switchUser: (userId: number) => Promise<void>;
   refreshNotifications: () => Promise<void>;
@@ -82,36 +83,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [currentUser]);
 
   const login = async (usernameOrEmail: string, password?: string) => {
-    setIsLoading(true);
-    try {
-      const res = await api.login(usernameOrEmail, password);
-      setCurrentUser(res.user);
-      localStorage.setItem('solar_plant_active_user_id', String(res.user.id));
-      await refreshNotifications();
-    } finally {
-      setIsLoading(false);
-    }
+    const res = await api.login(usernameOrEmail, password);
+    setCurrentUser(res.user);
+    localStorage.setItem('solar_plant_active_user_id', String(res.user.id));
+    api.getUsersList().then(setAllUsers).catch(() => {});
   };
 
   const registerEmployee = async (data: {
     full_name: string;
     email: string;
     password: string;
+    role?: 'employee' | 'manager';
     employee_id?: string;
     department?: string;
     phone?: string;
   }) => {
-    setIsLoading(true);
-    try {
-      const res = await api.registerEmployee(data);
-      setCurrentUser(res.user);
-      localStorage.setItem('solar_plant_active_user_id', String(res.user.id));
-      const updatedList = await api.getUsersList();
-      setAllUsers(updatedList);
-      await refreshNotifications();
-    } finally {
-      setIsLoading(false);
-    }
+    const res = await api.registerEmployee(data);
+    const updatedList = await api.getUsersList().catch(() => []);
+    if (updatedList.length > 0) setAllUsers(updatedList);
+    return { message: res.message, pending: res.user?.status === 'pending' };
   };
 
   const logout = () => {

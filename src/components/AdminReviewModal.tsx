@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, CheckCircle2, RotateCcw, AlertCircle, FileCheck, ShieldCheck } from 'lucide-react';
+import { X, CheckCircle2, RotateCcw, AlertCircle, FileCheck, ShieldCheck, Image as ImageIcon } from 'lucide-react';
 import { WorkOrder } from '../types';
 import { api } from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -21,11 +21,12 @@ export const AdminReviewModal: React.FC<AdminReviewModalProps> = ({
   const [comments, setComments] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [previewSrc, setPreviewSrc] = useState<{ src: string; name: string } | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!currentUser || currentUser.role !== 'admin') {
-      setError('Only administrators can approve or request revisions.');
+    if (!currentUser || !['admin', 'manager'].includes(currentUser.role)) {
+      setError('Only managers or administrators can approve or request revisions.');
       return;
     }
     setLoading(true);
@@ -92,6 +93,31 @@ export const AdminReviewModal: React.FC<AdminReviewModalProps> = ({
               <span className="text-amber-400 font-bold">{formatCurrency(workOrder.total_cost)}</span>
             </div>
           </div>
+
+          {/* Attached Photos Preview */}
+          {workOrder.attachments && workOrder.attachments.length > 0 && (
+            <div>
+              <label className="block text-cyan-400 font-mono text-[10px] uppercase mb-1.5 flex items-center gap-1.5">
+                <ImageIcon className="w-3.5 h-3.5" /> Attached Verification Photos ({workOrder.attachments.length})
+              </label>
+              <div className="flex items-center gap-2 overflow-x-auto pb-1">
+                {workOrder.attachments.map((att, idx) => (
+                  <button
+                    key={att.id || idx}
+                    type="button"
+                    onClick={() => setPreviewSrc({ src: att.file_data, name: att.file_name })}
+                    className="relative rounded-lg overflow-hidden border border-slate-700 bg-slate-950 w-24 h-16 shrink-0 hover:border-cyan-400 transition-colors"
+                    title={`Click to view ${att.file_name}`}
+                  >
+                    <img src={att.file_data} alt={att.file_name} className="w-full h-full object-cover" />
+                    <span className="absolute bottom-0 inset-x-0 bg-slate-950/85 text-[8px] text-center font-mono text-slate-300 truncate px-1">
+                      {(att.file_category || 'photo').replace('_', ' ')}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Action Choice */}
           <div>
@@ -177,6 +203,25 @@ export const AdminReviewModal: React.FC<AdminReviewModalProps> = ({
           </div>
         </form>
       </div>
+
+      {previewSrc && (
+        <div
+          className="fixed inset-0 z-[60] bg-slate-950/90 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => setPreviewSrc(null)}
+        >
+          <div className="relative max-w-3xl w-full bg-slate-900 border border-slate-700 rounded-2xl overflow-hidden shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-4 py-2.5 bg-slate-850 border-b border-slate-800 text-xs font-mono">
+              <span className="text-slate-200 truncate">{previewSrc.name}</span>
+              <button type="button" onClick={() => setPreviewSrc(null)} className="p-1 text-slate-400 hover:text-white">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-4 bg-slate-950 flex items-center justify-center max-h-[80vh]">
+              <img src={previewSrc.src} alt={previewSrc.name} className="max-w-full max-h-[70vh] object-contain rounded" />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

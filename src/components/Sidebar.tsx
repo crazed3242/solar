@@ -41,29 +41,42 @@ export const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   const { currentUser } = useAuth();
   const isAdmin = currentUser?.role === 'admin';
+  const isManager = currentUser?.role === 'manager';
 
   const adminNavItems: NavItem[] = [
     { id: 'dashboard', label: 'Admin Command', icon: LayoutDashboard },
-    { id: 'work_orders', label: 'Work Orders', icon: ClipboardList, badge: 'All' },
-    { id: 'daily_activity', label: 'Daily Activity Monitor', icon: CalendarDays, highlight: true },
+    { id: 'users', label: 'User Management', icon: Users, highlight: true },
+    { id: 'audit', label: 'Login & Audit Logs', icon: History, badge: 'Security' },
+    { id: 'daily_activity', label: 'Daily Activity Monitor', icon: CalendarDays },
+    { id: 'work_orders', label: 'Work Orders Overview', icon: ClipboardList },
     { id: 'equipment', label: 'Equipment & History', icon: Cpu },
-    { id: 'preventive', label: 'PM Schedules & Checklists', icon: CalendarCheck2 },
-    { id: 'inventory', label: 'Spare Parts & Inventory', icon: Package },
-    { id: 'reports', label: 'Reports & Analytics', icon: FileBarChart, badge: '12' },
-    { id: 'users', label: 'Technician Management', icon: Users },
-    { id: 'audit', label: 'System Audit Trail', icon: History },
+    { id: 'reports', label: 'Reports & Analytics', icon: FileBarChart },
     { id: 'acid_compliance', label: 'ACID Compliance Suite', icon: DatabaseZap, acidBadge: true },
   ];
 
-  const technicianNavItems: NavItem[] = [
+  const managerNavItems: NavItem[] = [
+    { id: 'dashboard', label: 'Manager Operations', icon: LayoutDashboard },
+    { id: 'work_orders', label: 'Work Orders & Assign', icon: ClipboardList, highlight: true },
+    { id: 'inventory', label: 'Spare Parts & Inventory', icon: Package, badge: 'Stock' },
+    { id: 'preventive', label: 'PM Schedules & Checklists', icon: CalendarCheck2 },
+    { id: 'daily_activity', label: 'Daily Activity Monitor', icon: CalendarDays },
+    { id: 'equipment', label: 'Equipment & History', icon: Cpu },
+  ];
+
+  const employeeNavItems: NavItem[] = [
     { id: 'tech_dashboard', label: 'My Dashboard', icon: LayoutDashboard },
     { id: 'tech_work_orders', label: 'Work Orders & Requests', icon: ClipboardList },
     { id: 'daily_activity', label: 'Daily Activity Log', icon: CalendarDays },
     { id: 'equipment', label: 'Equipment Registry', icon: Cpu },
-    { id: 'inventory', label: 'Spare Parts Catalog', icon: Package },
   ];
 
-  const navItems = isAdmin ? adminNavItems : technicianNavItems;
+  const navItems = isAdmin ? adminNavItems : isManager ? managerNavItems : employeeNavItems;
+  const environmentLabel = isAdmin
+    ? 'Admin Security Console'
+    : isManager
+      ? 'Manager Operations'
+      : 'Employee Field Terminal';
+  const dotColor = isAdmin ? 'bg-amber-400' : isManager ? 'bg-emerald-400' : 'bg-cyan-400';
 
   return (
     <>
@@ -88,9 +101,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </div>
             <div className="flex items-center justify-between mt-1">
               <span className="text-xs font-semibold text-slate-200">
-                {isAdmin ? 'Admin Console' : 'Technician Field Terminal'}
+                {environmentLabel}
               </span>
-              <span className={`w-2 h-2 rounded-full ${isAdmin ? 'bg-amber-400' : 'bg-cyan-400'}`} />
+              <span className={`w-2 h-2 rounded-full ${dotColor}`} />
             </div>
           </div>
 
@@ -151,7 +164,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               Location: <span className="text-emerald-400 font-mono">Kirahon, Misamis Oriental</span>
             </div>
             <div className="text-[10px] text-slate-500 mt-1 font-mono">
-              {isAdmin ? 'DB: SQLite WAL (ACID Safe)' : 'Terminal Status: Field Ready'}
+              {isAdmin ? 'Audit & Security Active' : isManager ? 'Operations & Stock Active' : 'Terminal Status: Field Ready'}
             </div>
           </div>
         </div>

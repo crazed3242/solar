@@ -18,12 +18,14 @@ import { useAuth } from '../context/AuthContext';
 
 export const InventoryView: React.FC = () => {
   const { currentUser } = useAuth();
-  const isAdmin = currentUser?.role === 'admin';
+  const isAdmin = currentUser?.role === 'manager' || currentUser?.role === 'admin';
 
   const [parts, setParts] = useState<PartInventory[]>([]);
   const [transactions, setTransactions] = useState<InventoryTransaction[]>([]);
   const [lowStockCount, setLowStockCount] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [actionSuccess, setActionSuccess] = useState<string | null>(null);
   const [search, setSearch] = useState('');
 
   // Receive Stock Modal
@@ -66,29 +68,39 @@ export const InventoryView: React.FC = () => {
 
   const handleReceiveStock = async (e: React.FormEvent) => {
     e.preventDefault();
+    setSubmitting(true);
     try {
-      await api.receiveInventory({
+      const result = await api.receiveInventory({
         ...receiveData,
         performed_by_id: currentUser?.id || 1,
       });
       setShowReceiveModal(false);
-      fetchData();
+      await fetchData();
+      setActionSuccess(`Successfully received ${receiveData.quantity} unit(s). Updated stock balance.`);
+      setTimeout(() => setActionSuccess(null), 4000);
     } catch (err: any) {
       alert(err.message || 'Failed to receive stock');
+    } finally {
+      setSubmitting(false);
     }
   };
 
   const handleAdjustStock = async (e: React.FormEvent) => {
     e.preventDefault();
+    setSubmitting(true);
     try {
       await api.adjustInventory({
         ...adjustData,
         performed_by_id: currentUser?.id || 1,
       });
       setShowAdjustModal(false);
-      fetchData();
+      await fetchData();
+      setActionSuccess('Inventory stock count successfully adjusted.');
+      setTimeout(() => setActionSuccess(null), 4000);
     } catch (err: any) {
       alert(err.message || 'Failed to adjust stock');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -166,6 +178,14 @@ export const InventoryView: React.FC = () => {
           )}
         </div>
       </div>
+
+      {/* Success Notification */}
+      {actionSuccess && (
+        <div className="p-3.5 rounded-xl bg-emerald-500/15 border border-emerald-500/40 text-emerald-300 text-xs flex items-center gap-2.5 animate-fadeIn">
+          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+          <span className="font-medium">{actionSuccess}</span>
+        </div>
+      )}
 
       {/* Low Stock Warning Banner */}
       {lowStockCount > 0 && (
@@ -387,15 +407,24 @@ export const InventoryView: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setShowReceiveModal(false)}
-                  className="px-3 py-1.5 bg-slate-800 rounded text-slate-300"
+                  disabled={submitting}
+                  className="px-3 py-1.5 bg-slate-800 rounded text-slate-300 hover:bg-slate-700 disabled:opacity-50"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 font-bold rounded text-white"
+                  disabled={submitting}
+                  className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 font-bold rounded text-white flex items-center gap-1.5 disabled:opacity-60"
                 >
-                  Commit Receipt
+                  {submitting ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>Committing...</span>
+                    </>
+                  ) : (
+                    'Commit Receipt'
+                  )}
                 </button>
               </div>
             </form>
@@ -458,15 +487,24 @@ export const InventoryView: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setShowAdjustModal(false)}
-                  className="px-3 py-1.5 bg-slate-800 rounded text-slate-300"
+                  disabled={submitting}
+                  className="px-3 py-1.5 bg-slate-800 rounded text-slate-300 hover:bg-slate-700 disabled:opacity-50"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded"
+                  disabled={submitting}
+                  className="px-4 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded flex items-center gap-1.5 disabled:opacity-60"
                 >
-                  Confirm Adjustment
+                  {submitting ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>Saving...</span>
+                    </>
+                  ) : (
+                    'Confirm Adjustment'
+                  )}
                 </button>
               </div>
             </form>

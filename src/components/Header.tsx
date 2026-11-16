@@ -10,7 +10,8 @@ import {
   FileText,
   UserCheck,
   ChevronDown,
-  LogOut
+  LogOut,
+  Database
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { formatPHTDateTime } from '../utils/formatters';
@@ -18,9 +19,10 @@ import { formatPHTDateTime } from '../utils/formatters';
 interface HeaderProps {
   onToggleSidebar?: () => void;
   onNavigate?: (tab: string) => void;
+  onOpenSupabase?: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ onToggleSidebar, onNavigate }) => {
+export const Header: React.FC<HeaderProps> = ({ onToggleSidebar, onNavigate, onOpenSupabase }) => {
   const {
     currentUser,
     notifications,
@@ -99,6 +101,17 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar, onNavigate }) =
 
       {/* Right Controls: Notifications + Role Switcher */}
       <div className="flex items-center gap-2 sm:gap-3">
+        {/* Supabase Integration Button */}
+        <button
+          onClick={onOpenSupabase}
+          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 text-xs font-medium transition-colors cursor-pointer"
+          title="Supabase Backend Settings & Schema"
+        >
+          <Database className="w-3.5 h-3.5 text-emerald-400" />
+          <span className="hidden sm:inline font-mono text-[11px]">Supabase</span>
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+        </button>
+
         {/* Notifications Popover */}
         <div className="relative">
           <button
@@ -174,10 +187,14 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar, onNavigate }) =
             <div className={`w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs ${
               currentUser?.role === 'admin'
                 ? 'bg-amber-500/20 text-amber-400 border border-amber-500/40'
-                : 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/40'
+                : currentUser?.role === 'manager'
+                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
+                  : 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/40'
             }`}>
               {currentUser?.role === 'admin' ? (
                 <ShieldCheck className="w-4 h-4" />
+              ) : currentUser?.role === 'manager' ? (
+                <UserCheck className="w-4 h-4" />
               ) : (
                 <Wrench className="w-3.5 h-3.5" />
               )}
@@ -189,9 +206,17 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar, onNavigate }) =
               </div>
               <div className="text-[10px] flex items-center gap-1 font-mono">
                 <span className={`uppercase font-bold ${
-                  currentUser?.role === 'admin' ? 'text-amber-400' : 'text-cyan-400'
+                  currentUser?.role === 'admin'
+                    ? 'text-amber-400'
+                    : currentUser?.role === 'manager'
+                      ? 'text-emerald-400'
+                      : 'text-cyan-400'
                 }`}>
-                  {currentUser?.role === 'admin' ? 'ADMIN' : 'TECHNICIAN'}
+                  {currentUser?.role === 'admin'
+                    ? 'ADMIN'
+                    : currentUser?.role === 'manager'
+                      ? 'MANAGER'
+                      : 'EMPLOYEE'}
                 </span>
                 <span className="text-slate-500">•</span>
                 <span className="text-slate-400">{currentUser?.employee_id}</span>
@@ -219,9 +244,15 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar, onNavigate }) =
                   <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
                     currentUser?.role === 'admin'
                       ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
-                      : 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30'
+                      : currentUser?.role === 'manager'
+                        ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                        : 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30'
                   }`}>
-                    {currentUser?.role === 'admin' ? 'System Administrator' : 'Field Technician'}
+                    {currentUser?.role === 'admin'
+                      ? 'System Administrator'
+                      : currentUser?.role === 'manager'
+                        ? 'Operations Manager'
+                        : 'Field Employee'}
                   </span>
                 </div>
                 <div className="flex justify-between items-center text-[11px]">

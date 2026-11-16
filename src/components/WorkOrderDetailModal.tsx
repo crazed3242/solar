@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   X,
   Clock,
@@ -15,7 +15,11 @@ import {
   Image as ImageIcon,
   CheckSquare,
   AlertTriangle,
-  ArrowRight
+  ArrowRight,
+  ZoomIn,
+  Download,
+  Trash2,
+  UserMinus
 } from 'lucide-react';
 import { WorkOrder } from '../types';
 import { formatPHTDateTime, formatPHTDate, formatCurrency, getStatusBadge, getPriorityBadge } from '../utils/formatters';
@@ -34,7 +38,10 @@ export const WorkOrderDetailModal: React.FC<WorkOrderDetailModalProps> = ({
 }) => {
   const { currentUser } = useAuth();
   const isAdmin = currentUser?.role === 'admin';
+  const isManager = currentUser?.role === 'manager';
   const isAssignedTech = currentUser?.id === workOrder.assigned_technician_id;
+  const [previewImage, setPreviewImage] = useState<{ src: string; name: string; category: string } | null>(null);
+  const [confirmAdminAction, setConfirmAdminAction] = useState<'unassign' | 'delete' | null>(null);
 
   const statusBadge = getStatusBadge(workOrder.status);
   const priorityBadge = getPriorityBadge(workOrder.priority);
@@ -185,6 +192,37 @@ export const WorkOrderDetailModal: React.FC<WorkOrderDetailModalProps> = ({
             </div>
           )}
 
+          {/* Attachments (Before & After Photos) */}
+          {workOrder.attachments && workOrder.attachments.length > 0 && (
+            <div className="space-y-2">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-cyan-400 flex items-center gap-1.5">
+                <ImageIcon className="w-4 h-4 text-cyan-400" /> Visual Verification & Inspection Photos ({workOrder.attachments.length})
+              </h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {workOrder.attachments.map((att, idx) => (
+                  <div key={att.id || idx} className="p-2.5 rounded-xl bg-slate-800/40 border border-slate-700/60 space-y-1.5">
+                    <div className="flex items-center justify-between text-[10px] font-mono">
+                      <span className="uppercase font-bold text-amber-400">{(att.file_category || 'photo').replace('_', ' ')}</span>
+                      <span className="text-slate-400 truncate max-w-[180px]">{att.file_name}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setPreviewImage({ src: att.file_data, name: att.file_name, category: att.file_category || 'photo' })}
+                      className="group relative w-full rounded-lg overflow-hidden border border-slate-700/80 bg-slate-950 flex items-center justify-center cursor-zoom-in"
+                    >
+                      <img src={att.file_data} alt={att.file_name} className="w-full h-auto max-h-56 object-contain" />
+                      <div className="absolute inset-0 bg-slate-950/0 group-hover:bg-slate-950/40 transition-colors flex items-center justify-center">
+                        <span className="opacity-0 group-hover:opacity-100 transition-opacity px-2.5 py-1 rounded-md bg-slate-900/90 border border-slate-700 text-slate-100 text-[10px] font-mono flex items-center gap-1">
+                          <ZoomIn className="w-3.5 h-3.5 text-cyan-400" /> Click to enlarge
+                        </span>
+                      </div>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Parts Consumed */}
           {workOrder.partsUsed && workOrder.partsUsed.length > 0 && (
             <div className="space-y-2">
@@ -220,28 +258,6 @@ export const WorkOrderDetailModal: React.FC<WorkOrderDetailModalProps> = ({
                     )}
                   </tbody>
                 </table>
-              </div>
-            </div>
-          )}
-
-          {/* Attachments (Before & After Photos) */}
-          {workOrder.attachments && workOrder.attachments.length > 0 && (
-            <div className="space-y-2">
-              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
-                <ImageIcon className="w-4 h-4 text-cyan-400" /> Visual Verification & Inspection Scans
-              </h4>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {workOrder.attachments.map((att) => (
-                  <div key={att.id} className="p-2.5 rounded-xl bg-slate-800/40 border border-slate-700/60 space-y-1.5">
-                    <div className="flex items-center justify-between text-[10px] font-mono">
-                      <span className="uppercase font-bold text-amber-400">{att.file_category.replace('_', ' ')}</span>
-                      <span className="text-slate-400">{att.file_name}</span>
-                    </div>
-                    <div className="rounded-lg overflow-hidden border border-slate-700/80 bg-slate-950 flex items-center justify-center">
-                      <img src={att.file_data} alt={att.file_name} className="w-full h-auto max-h-48 object-contain" />
-                    </div>
-                  </div>
-                ))}
               </div>
             </div>
           )}
@@ -339,18 +355,19 @@ export const WorkOrderDetailModal: React.FC<WorkOrderDetailModalProps> = ({
               </>
             )}
 
-            {/* Admin Actions */}
-            {isAdmin && (
-              <>
-                {workOrder.status === 'open' && (
-                  <button
-                    onClick={() => onAction && onAction('assign', workOrder)}
-                    className="px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-medium text-xs"
-                  >
-                    Assign Technician
-                  </button>
-                )}
+            {/* Manager Assignment Action (Manager Only) */}
+            {isManager && workOrder.status === 'open' && (
+              <button
+                onClick={() => onAction && onAction('assign', workOrder)}
+                className="px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-medium text-xs"
+              >
+                Assign Employee
+              </button>
+            )}
 
+            {/* Manager / Admin Review & Close Actions */}
+            {(isManager || isAdmin) && (
+              <>
                 {workOrder.status === 'completed_pending_review' && (
                   <button
                     onClick={() => onAction && onAction('review', workOrder)}
@@ -371,6 +388,69 @@ export const WorkOrderDetailModal: React.FC<WorkOrderDetailModalProps> = ({
               </>
             )}
 
+            {/* Admin Assignment Removal & Delete Controls */}
+            {isAdmin && (
+              <>
+                {workOrder.assigned_technician_id && !['approved', 'closed'].includes(workOrder.status) && (
+                  confirmAdminAction === 'unassign' ? (
+                    <div className="inline-flex items-center gap-1.5 bg-amber-950/60 border border-amber-500/40 rounded-lg px-2.5 py-1 text-xs">
+                      <span className="text-amber-200 font-mono text-[11px]">Remove assignment?</span>
+                      <button
+                        onClick={() => {
+                          setConfirmAdminAction(null);
+                          onAction && onAction('unassign', workOrder);
+                        }}
+                        className="px-2 py-0.5 rounded bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-[11px] cursor-pointer"
+                      >
+                        Confirm
+                      </button>
+                      <button
+                        onClick={() => setConfirmAdminAction(null)}
+                        className="px-2 py-0.5 rounded bg-slate-800 text-slate-300 text-[11px] cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setConfirmAdminAction('unassign')}
+                      className="px-3 py-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 font-medium text-xs flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <UserMinus className="w-3.5 h-3.5" /> Remove Assignment
+                    </button>
+                  )
+                )}
+
+                {confirmAdminAction === 'delete' ? (
+                  <div className="inline-flex items-center gap-1.5 bg-rose-950/60 border border-rose-500/40 rounded-lg px-2.5 py-1 text-xs">
+                    <span className="text-rose-200 font-mono text-[11px]">Delete work order?</span>
+                    <button
+                      onClick={() => {
+                        setConfirmAdminAction(null);
+                        onAction && onAction('delete', workOrder);
+                      }}
+                      className="px-2 py-0.5 rounded bg-rose-600 hover:bg-rose-500 text-white font-bold text-[11px] cursor-pointer"
+                    >
+                      Confirm
+                    </button>
+                    <button
+                      onClick={() => setConfirmAdminAction(null)}
+                      className="px-2 py-0.5 rounded bg-slate-800 text-slate-300 text-[11px] cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setConfirmAdminAction('delete')}
+                    className="px-3 py-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 font-medium text-xs flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" /> Delete Work Order
+                  </button>
+                )}
+              </>
+            )}
+
             <button
               onClick={onClose}
               className="px-3.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium text-xs border border-slate-700"
@@ -380,6 +460,46 @@ export const WorkOrderDetailModal: React.FC<WorkOrderDetailModalProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Fullscreen Photo Preview Lightbox */}
+      {previewImage && (
+        <div
+          className="fixed inset-0 z-[60] bg-slate-950/90 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => setPreviewImage(null)}
+        >
+          <div
+            className="relative max-w-4xl w-full bg-slate-900 border border-slate-700 rounded-2xl overflow-hidden shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-4 py-3 bg-slate-850 border-b border-slate-800">
+              <div className="flex items-center gap-2 text-xs font-mono">
+                <span className="uppercase font-bold text-amber-400">{previewImage.category.replace('_', ' ')}</span>
+                <span className="text-slate-400">•</span>
+                <span className="text-slate-200 truncate max-w-md">{previewImage.name}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <a
+                  href={previewImage.src}
+                  download={previewImage.name}
+                  className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-mono flex items-center gap-1 border border-slate-700"
+                >
+                  <Download className="w-3.5 h-3.5 text-cyan-400" /> Download
+                </a>
+                <button
+                  type="button"
+                  onClick={() => setPreviewImage(null)}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+            <div className="p-4 bg-slate-950 flex items-center justify-center max-h-[80vh] overflow-auto">
+              <img src={previewImage.src} alt={previewImage.name} className="max-w-full max-h-[72vh] object-contain rounded" />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

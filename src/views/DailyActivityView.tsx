@@ -13,9 +13,10 @@ import {
   RefreshCw,
   Search,
   Eye,
-  ArrowRight
+  ArrowRight,
+  X
 } from 'lucide-react';
-import { DailyActivityItem, User as UserType, Equipment } from '../types';
+import { DailyActivityItem, User as UserType, Equipment, isEmployeeRole } from '../types';
 import { api } from '../services/api';
 import { formatPHTDate, formatCurrency, getStatusBadge } from '../utils/formatters';
 import { exportReportToPDF, exportReportToExcel } from '../utils/exportUtils';
@@ -27,7 +28,7 @@ interface DailyActivityViewProps {
 
 export const DailyActivityView: React.FC<DailyActivityViewProps> = ({ onSelectWorkOrder }) => {
   const { currentUser } = useAuth();
-  const isAdmin = currentUser?.role === 'admin';
+  const isAdmin = currentUser?.role === 'admin' || currentUser?.role === 'manager';
 
   // Filters
   const [selectedDate, setSelectedDate] = useState<string>('');
@@ -57,6 +58,7 @@ export const DailyActivityView: React.FC<DailyActivityViewProps> = ({ onSelectWo
   const [technicians, setTechnicians] = useState<UserType[]>([]);
   const [equipmentList, setEquipmentList] = useState<Equipment[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+  const [previewPhoto, setPreviewPhoto] = useState<{ src: string; name: string; category: string } | null>(null);
 
   // Quick Date Setters
   const setQuickDate = (daysAgo: number) => {
@@ -69,7 +71,7 @@ export const DailyActivityView: React.FC<DailyActivityViewProps> = ({ onSelectWo
     async function loadMetadata() {
       try {
         const [users, equips] = await Promise.all([api.getUsers(), api.getEquipment()]);
-        setTechnicians(users.filter((u) => u.role === 'technician'));
+        setTechnicians(users.filter((u) => isEmployeeRole(u.role)));
         setEquipmentList(equips);
       } catch (err) {
         console.error('Failed to load activity filters:', err);
@@ -450,14 +452,20 @@ export const DailyActivityView: React.FC<DailyActivityViewProps> = ({ onSelectWo
                       <ImageIcon className="w-3.5 h-3.5 text-cyan-400" /> Verification Photos:
                     </span>
                     {act.attachments && act.attachments.length > 0 ? (
-                      <div className="flex items-center gap-2">
-                        {act.attachments.map((att) => (
-                          <div key={att.id} className="relative group rounded-lg overflow-hidden border border-slate-700 bg-slate-950 w-24 h-16 shrink-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {act.attachments.map((att, idx) => (
+                          <button
+                            key={att.id || idx}
+                            type="button"
+                            onClick={() => setPreviewPhoto({ src: att.file_data, name: att.file_name, category: att.file_category || 'photo' })}
+                            className="relative group rounded-lg overflow-hidden border border-slate-700 hover:border-cyan-400 bg-slate-950 w-24 h-16 shrink-0 transition-colors cursor-zoom-in"
+                            title={`Click to enlarge ${att.file_name}`}
+                          >
                             <img src={att.file_data} alt={att.file_name} className="w-full h-full object-cover" />
                             <span className="absolute bottom-0 inset-x-0 bg-slate-950/80 text-[8px] text-center font-mono text-slate-300 truncate px-1">
-                              {att.file_category.replace('_', ' ')}
+                              {(att.file_category || 'photo').replace('_', ' ')}
                             </span>
-                          </div>
+                          </button>
                         ))}
                       </div>
                     ) : (
@@ -483,6 +491,32 @@ export const DailyActivityView: React.FC<DailyActivityViewProps> = ({ onSelectWo
           })
         )}
       </div>
+
+      {previewPhoto && (
+        <div
+          className="fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => setPreviewPhoto(null)}
+        >
+          <div
+            className="relative max-w-4xl w-full bg-slate-900 border border-slate-700 rounded-2xl overflow-hidden shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-4 py-3 bg-slate-850 border-b border-slate-800 text-xs font-mono">
+              <div className="flex items-center gap-2">
+                <span className="uppercase font-bold text-amber-400">{previewPhoto.category.replace('_', ' ')}</span>
+                <span className="text-slate-400">•</span>
+                <span className="text-slate-200 truncate max-w-md">{previewPhoto.name}</span>
+              </div>
+              <button type="button" onClick={() => setPreviewPhoto(null)} className="p-1 text-slate-400 hover:text-white">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-4 bg-slate-950 flex items-center justify-center max-h-[80vh]">
+              <img src={previewPhoto.src} alt={previewPhoto.name} className="max-w-full max-h-[72vh] object-contain rounded" />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

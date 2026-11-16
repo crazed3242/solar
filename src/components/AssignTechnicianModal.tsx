@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, UserCheck, ShieldAlert } from 'lucide-react';
-import { WorkOrder, User } from '../types';
+import { WorkOrder, User, isEmployeeRole } from '../types';
 import { api } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
@@ -25,7 +25,7 @@ export const AssignTechnicianModal: React.FC<AssignTechnicianModalProps> = ({
   useEffect(() => {
     async function loadTechs() {
       const users = await api.getUsers();
-      const techList = users.filter((u) => u.role === 'technician' && u.status === 'active');
+      const techList = users.filter((u) => isEmployeeRole(u.role) && u.status === 'active');
       setTechnicians(techList);
       if (techList.length > 0) setSelectedTechId(techList[0].id);
     }

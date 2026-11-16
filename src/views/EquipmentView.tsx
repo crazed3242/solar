@@ -11,7 +11,8 @@ import {
   History,
   Layers,
   ChevronRight,
-  RefreshCw
+  RefreshCw,
+  Trash2
 } from 'lucide-react';
 import { Equipment, EquipmentCategory } from '../types';
 import { api } from '../services/api';
@@ -28,10 +29,13 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
   onCreateWorkOrderForAsset,
 }) => {
   const { currentUser } = useAuth();
-  const isAdmin = currentUser?.role === 'admin';
+  const isAdminOnly = currentUser?.role === 'admin';
+  const canManageEquipment = currentUser?.role === 'manager' || currentUser?.role === 'admin';
 
   const [equipmentList, setEquipmentList] = useState<Equipment[]>([]);
   const [loading, setLoading] = useState(true);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
+  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   // Filters
   const [categoryFilter, setCategoryFilter] = useState('all');
@@ -75,12 +79,28 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
 
   const handleCreateAsset = async (e: React.FormEvent) => {
     e.preventDefault();
+    setFeedback(null);
     try {
       await api.createEquipment(newAsset);
       setShowAddModal(false);
+      setFeedback({ type: 'success', message: `Registered asset ${newAsset.asset_id} (${newAsset.name}).` });
       fetchEquipment();
     } catch (err: any) {
-      alert(err.message || 'Failed to create asset');
+      setFeedback({ type: 'error', message: err.message || 'Failed to create asset' });
+    }
+  };
+
+  const handleDeleteAsset = async (e: React.MouseEvent, eq: Equipment) => {
+    e.stopPropagation();
+    setFeedback(null);
+    try {
+      await api.deleteEquipment(eq.id);
+      setConfirmDeleteId(null);
+      setFeedback({ type: 'success', message: `Deleted equipment ${eq.asset_id} (${eq.name}).` });
+      fetchEquipment();
+    } catch (err: any) {
+      setConfirmDeleteId(null);
+      setFeedback({ type: 'error', message: err.message || 'Failed to delete asset' });
     }
   };
 
@@ -111,7 +131,7 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
             <RefreshCw className="w-4 h-4" />
           </button>
 
-          {isAdmin && (
+          {canManageEquipment && (
             <button
               onClick={() => setShowAddModal(true)}
               className="px-3.5 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 shadow-md transition-all"
@@ -121,6 +141,21 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
           )}
         </div>
       </div>
+
+      {feedback && (
+        <div
+          className={`p-3 rounded-xl border text-xs flex items-center justify-between gap-3 ${
+            feedback.type === 'success'
+              ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+              : 'bg-rose-500/15 border-rose-500/40 text-rose-300'
+          }`}
+        >
+          <span>{feedback.message}</span>
+          <button onClick={() => setFeedback(null)} className="text-[11px] font-mono opacity-80 hover:opacity-100 cursor-pointer">
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {/* Filter Bar */}
       <div className="p-4 rounded-2xl bg-slate-850 border border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs">
@@ -227,13 +262,47 @@ export const EquipmentView: React.FC<EquipmentViewProps> = ({
                   </div>
                 </div>
 
-                <div className="pt-3 border-t border-slate-800 flex items-center justify-between text-xs font-mono">
+                <div className="pt-3 border-t border-slate-800 flex items-center justify-between gap-2 text-xs font-mono">
                   <span className="text-slate-400 flex items-center gap-1">
                     <History className="w-3.5 h-3.5 text-purple-400" /> Full Repair History
                   </span>
-                  <span className="text-amber-400 group-hover:underline flex items-center gap-0.5">
-                    View Timeline <ChevronRight className="w-3.5 h-3.5" />
-                  </span>
+                  <div className="flex items-center gap-2">
+                    {isAdminOnly && (
+                      confirmDeleteId === eq.id ? (
+                        <div className="inline-flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            onClick={(e) => handleDeleteAsset(e, eq)}
+                            className="px-2 py-0.5 rounded bg-rose-600 hover:bg-rose-500 text-white font-bold text-[10px] cursor-pointer"
+                          >
+                            Confirm
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setConfirmDeleteId(null);
+                            }}
+                            className="px-2 py-0.5 rounded bg-slate-800 text-slate-300 text-[10px] cursor-pointer"
+                          >
+                            No
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setConfirmDeleteId(eq.id);
+                          }}
+                          title="Delete Equipment"
+                          className="p-1 rounded bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 transition-colors cursor-pointer"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )
+                    )}
+                    <span className="text-amber-400 group-hover:underline flex items-center gap-0.5">
+                      View Timeline <ChevronRight className="w-3.5 h-3.5" />
+                    </span>
+                  </div>
                 </div>
               </div>
             );

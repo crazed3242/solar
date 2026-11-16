@@ -144,8 +144,8 @@ export const ReportSubmissionModal: React.FC<ReportSubmissionModalProps> = ({
   const handleAddPresetPhoto = (type: 'before' | 'after') => {
     if (type === 'before') {
       const svg = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="600" height="400" viewBox="0 0 600 400"><rect width="600" height="400" fill="%231E1B4B"/><rect x="40" y="40" width="520" height="320" rx="8" fill="%23312E81" stroke="%23EF4444" stroke-width="4"/><circle cx="300" cy="200" r="45" fill="%23DC2626" opacity="0.9"/><text x="60" y="80" fill="%23F87171" font-family="monospace" font-weight="bold" font-size="18">FAULT INSPECTION: PRE-REPAIR HOTSPOT</text><text x="60" y="110" fill="%23E2E8F0" font-family="sans-serif" font-size="14">Asset: ${workOrder.equipment_name} (${workOrder.asset_id})</text><text x="60" y="340" fill="%23FCA5A5" font-family="sans-serif" font-size="13">Status: HIGH ELECTRICAL RESISTANCE DETECTED (88.4°C)</text></svg>`;
-      setAttachments([
-        ...attachments,
+      setAttachments((prev) => [
+        ...prev,
         {
           file_name: `${workOrder.asset_id}_BeforeRepair_Hotspot.svg`,
           file_type: 'image/svg+xml',
@@ -156,8 +156,8 @@ export const ReportSubmissionModal: React.FC<ReportSubmissionModalProps> = ({
       ]);
     } else {
       const svg = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="600" height="400" viewBox="0 0 600 400"><rect width="600" height="400" fill="%230F172A"/><rect x="40" y="40" width="520" height="320" rx="8" fill="%231E293B" stroke="%2310B981" stroke-width="4"/><circle cx="300" cy="200" r="30" fill="%230284C7" opacity="0.5"/><circle cx="300" cy="200" r="15" fill="%2310B981"/><text x="60" y="80" fill="%2334D399" font-family="monospace" font-weight="bold" font-size="18">VERIFICATION: POST-REPAIR RESTORATION</text><text x="60" y="110" fill="%23E2E8F0" font-family="sans-serif" font-size="14">Asset: ${workOrder.equipment_name} (${workOrder.asset_id})</text><text x="60" y="340" fill="%2386EFAC" font-family="sans-serif" font-size="13">Status: BALANCED TEMPERATURE (34.1°C) - NORMAL OPERATION</text></svg>`;
-      setAttachments([
-        ...attachments,
+      setAttachments((prev) => [
+        ...prev,
         {
           file_name: `${workOrder.asset_id}_AfterRepair_Restored.svg`,
           file_type: 'image/svg+xml',
@@ -174,11 +174,17 @@ export const ReportSubmissionModal: React.FC<ReportSubmissionModalProps> = ({
     const file = e.target.files?.[0];
     if (!file) return;
 
+    if (file.size > 5 * 1024 * 1024) {
+      setError('Uploaded photo must be under 5MB.');
+      e.target.value = '';
+      return;
+    }
+
     const reader = new FileReader();
     reader.onload = () => {
       const base64 = reader.result as string;
-      setAttachments([
-        ...attachments,
+      setAttachments((prev) => [
+        ...prev,
         {
           file_name: file.name,
           file_type: file.type || 'image/jpeg',
@@ -189,6 +195,7 @@ export const ReportSubmissionModal: React.FC<ReportSubmissionModalProps> = ({
       ]);
     };
     reader.readAsDataURL(file);
+    e.target.value = '';
   };
 
   // Submit Handler

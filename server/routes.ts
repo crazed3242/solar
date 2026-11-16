@@ -76,6 +76,10 @@ apiRouter.post('/auth/login', async (req: Request, res: Response) => {
     return res.status(401).json({ error: 'Invalid username or password' });
   }
 
+  if (user.status === 'pending') {
+    return res.status(403).json({ error: 'Your account is pending Administrator approval. You can sign in once an Admin approves your account.' });
+  }
+
   if (user.status !== 'active') {
     return res.status(403).json({ error: 'Account is deactivated. Contact Administrator.' });
   }
@@ -91,14 +95,15 @@ apiRouter.post('/auth/login', async (req: Request, res: Response) => {
   res.json({ user: safeUser });
 });
 
-// Employee / Technician Sign Up Endpoint
+// Employee / Manager Sign Up Request Endpoint (Requires Admin Approval)
 apiRouter.post('/auth/register', async (req: Request, res: Response) => {
-  const { full_name, email, password, employee_id, department, phone } = req.body;
+  const { full_name, email, password, role, employee_id, department, phone } = req.body;
 
   if (!full_name || !email || !password) {
     return res.status(400).json({ error: 'Full name, email address, and password are required' });
   }
 
+  const targetRole = role === 'manager' ? 'manager' : 'employee';
   const cleanEmail = email.trim().toLowerCase();
 
   // Validate email format
@@ -118,9 +123,13 @@ apiRouter.post('/auth/register', async (req: Request, res: Response) => {
   // Generate or sanitize employee ID
   let cleanEmpId = (employee_id || '').trim();
   if (!cleanEmpId) {
-    const countRow = await db.prepare("SELECT count(*) as count FROM users WHERE role = 'technician'").get() as any;
-    const nextNum = (countRow?.count || 0) + 101;
-    cleanEmpId = `EMP-TEC-${nextNum}`;
+    if (targetRole === 'manager') {
+      const countRow = await db.prepare("SELECT count(*) as count FROM users WHERE role = 'manager'").get() as any;
+      cleanEmpId = `EMP-MGR-${(countRow?.count || 0) + 101}`;
+    } else {
+      const countRow = await db.prepare("SELECT count(*) as count FROM users WHERE role IN ('employee', 'technician')").get() as any;
+      cleanEmpId = `EMP-TEC-${(countRow?.count || 0) + 101}`;
+    }
   } else {
     // Check if employee ID already in use
     const existingId = await db.prepare('SELECT id FROM users WHERE LOWER(employee_id) = ?').get(cleanEmpId.toLowerCase()) as any;
@@ -142,12 +151,13 @@ apiRouter.post('/auth/register', async (req: Request, res: Response) => {
   try {
     const result = await db.prepare(`
       INSERT INTO users (employee_id, full_name, email, password_hash, role, department, phone, status)
-      VALUES (?, ?, ?, ?, 'technician', ?, ?, 'active')
+      VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')
     `).run(
       cleanEmpId,
       full_name.trim(),
       cleanEmail,
       password_hash,
+      targetRole,
       (department || 'Electrical Maintenance').trim(),
       (phone || '').trim()
     );
@@ -155,10 +165,10 @@ apiRouter.post('/auth/register', async (req: Request, res: Response) => {
     const newUserId = Number(result.lastInsertRowid);
     const createdUser = await db.prepare('SELECT id, employee_id, full_name, email, role, department, phone, status, created_at FROM users WHERE id = ?').get(newUserId) as any;
 
-    await logAudit(newUserId, cleanEmail, 'technician', 'EMPLOYEE_REGISTRATION', 'users', String(newUserId), { employee_id: cleanEmpId, full_name }, req);
+    await logAudit(newUserId, cleanEmail, targetRole, 'ACCOUNT_REGISTRATION_REQUEST', 'users', String(newUserId), { employee_id: cleanEmpId, full_name, role: targetRole, status: 'pending' }, req);
 
     res.status(201).json({
-      message: 'Employee account created successfully',
+      message: 'Registration submitted! Your account is pending Administrator approval before you can sign in.',
       user: createdUser,
     });
   } catch (err: any) {
@@ -168,7 +178,7 @@ apiRouter.post('/auth/register', async (req: Request, res: Response) => {
     if (err.message && err.message.includes('UNIQUE constraint failed: users.employee_id')) {
       return res.status(400).json({ error: 'This Employee ID is already registered.' });
     }
-    res.status(500).json({ error: err.message || 'Failed to create employee account' });
+    res.status(500).json({ error: err.message || 'Failed to create account request' });
   }
 });
 
@@ -224,13 +234,29 @@ apiRouter.post('/users', async (req: Request, res: Response) => {
 apiRouter.patch('/users/:id/status', async (req: Request, res: Response) => {
   const { id } = req.params;
   const { status } = req.body;
-  if (!['active', 'deactivated'].includes(status)) {
+  if (!['active', 'pending', 'deactivated'].includes(status)) {
     return res.status(400).json({ error: 'Invalid status' });
   }
 
   await db.prepare('UPDATE users SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(status, id);
-  await logAudit(null, 'admin', 'admin', 'UPDATE_USER_STATUS', 'users', id, { status }, req);
+  await logAudit(null, 'admin', 'admin', status === 'active' ? 'APPROVE_OR_ACTIVATE_USER' : 'UPDATE_USER_STATUS', 'users', id, { status }, req);
   res.json({ message: `User status changed to ${status}` });
+});
+
+apiRouter.delete('/users/:id', async (req: Request, res: Response) => {
+  const { id } = req.params;
+  try {
+    await db.prepare('DELETE FROM notifications WHERE user_id = ?').run(id);
+    await db.prepare('DELETE FROM technician_assignments WHERE technician_id = ? OR assigned_by_id = ?').run(id, id);
+    await db.prepare("UPDATE work_orders SET assigned_technician_id = NULL, status = 'open' WHERE assigned_technician_id = ? AND status IN ('assigned', 'acknowledged')").run(id);
+    await db.prepare('UPDATE work_orders SET assigned_technician_id = NULL WHERE assigned_technician_id = ?').run(id);
+    await db.prepare('UPDATE maintenance_schedules SET default_technician_id = NULL WHERE default_technician_id = ?').run(id);
+    await db.prepare('DELETE FROM users WHERE id = ?').run(id);
+    await logAudit(null, 'admin', 'admin', 'DELETE_USER', 'users', id, { deletedUserId: id }, req);
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message || 'Cannot delete user with historical records' });
+  }
 });
 
 // --------------------------------------------------------------------------
@@ -321,6 +347,18 @@ apiRouter.post('/equipment', async (req: Request, res: Response) => {
     res.status(201).json({ id: result.lastInsertRowid, message: 'Equipment registered successfully' });
   } catch (err: any) {
     res.status(400).json({ error: err.message });
+  }
+});
+
+apiRouter.delete('/equipment/:id', async (req: Request, res: Response) => {
+  const { id } = req.params;
+  try {
+    await db.prepare('DELETE FROM maintenance_schedules WHERE equipment_id = ?').run(id);
+    await db.prepare('DELETE FROM equipment WHERE id = ?').run(id);
+    await logAudit(null, 'admin', 'admin', 'DELETE_EQUIPMENT', 'equipment', id, { equipmentId: id }, req);
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message || 'Cannot delete equipment with linked work orders' });
   }
 });
 
@@ -587,6 +625,45 @@ apiRouter.post('/work-orders/:id/assign', async (req: Request, res: Response) =>
   try {
     const result = await assignTx();
     res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+apiRouter.post('/work-orders/:id/unassign', async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { changed_by_id, notes } = req.body;
+  try {
+    const wo = await db.prepare('SELECT status, work_order_code FROM work_orders WHERE id = ?').get(id) as any;
+    await db.prepare("UPDATE work_orders SET assigned_technician_id = NULL, status = 'open', updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(id);
+    await db.prepare('DELETE FROM technician_assignments WHERE work_order_id = ?').run(id);
+    await db.prepare('INSERT INTO work_order_status_history (work_order_id, from_status, to_status, changed_by_id, notes) VALUES (?, ?, \'open\', ?, ?)').run(
+      id,
+      wo?.status || 'assigned',
+      changed_by_id || 1,
+      notes || 'Assignment removed by Administrator'
+    );
+    await logAudit(changed_by_id || null, 'admin', 'admin', 'UNASSIGN_WORK_ORDER', 'work_orders', id, { work_order_code: wo?.work_order_code }, req);
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+apiRouter.delete('/work-orders/:id', async (req: Request, res: Response) => {
+  const { id } = req.params;
+  try {
+    await db.prepare('DELETE FROM attachments WHERE work_order_id = ?').run(id);
+    await db.prepare('DELETE FROM work_order_parts WHERE work_order_id = ?').run(id);
+    await db.prepare('DELETE FROM approvals WHERE work_order_id = ?').run(id);
+    await db.prepare('DELETE FROM checklist_results WHERE work_order_id = ?').run(id);
+    await db.prepare('DELETE FROM maintenance_reports WHERE work_order_id = ?').run(id);
+    await db.prepare('DELETE FROM work_order_status_history WHERE work_order_id = ?').run(id);
+    await db.prepare('DELETE FROM technician_assignments WHERE work_order_id = ?').run(id);
+    await db.prepare('DELETE FROM notifications WHERE work_order_id = ?').run(id);
+    await db.prepare('DELETE FROM work_orders WHERE id = ?').run(id);
+    await logAudit(null, 'admin', 'admin', 'DELETE_WORK_ORDER', 'work_orders', id, { workOrderId: id }, req);
+    res.json({ success: true });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -1022,8 +1099,8 @@ apiRouter.post('/work-orders/:id/review', async (req: Request, res: Response) =>
   }
 
   const reviewer = await db.prepare('SELECT * FROM users WHERE id = ?').get(reviewer_id) as any;
-  if (!reviewer || reviewer.role !== 'admin') {
-    return res.status(403).json({ error: 'Unauthorized: Only administrators can review and approve maintenance reports' });
+  if (!reviewer || !['admin', 'manager'].includes(reviewer.role)) {
+    return res.status(403).json({ error: 'Unauthorized: Only administrators or managers can review and approve maintenance reports' });
   }
 
   const reviewTx = db.transaction(async () => {
@@ -1497,6 +1574,22 @@ apiRouter.get('/audit-logs', async (req: Request, res: Response) => {
   res.json(logs);
 });
 
+apiRouter.delete('/audit-logs/:id', async (req: Request, res: Response) => {
+  const { id } = req.params;
+  await db.prepare('DELETE FROM audit_logs WHERE id = ?').run(id);
+  res.json({ success: true });
+});
+
+apiRouter.delete('/audit-logs', async (req: Request, res: Response) => {
+  const { action } = req.query;
+  if (action && action !== 'all') {
+    await db.prepare('DELETE FROM audit_logs WHERE action LIKE ?').run(`%${action}%`);
+  } else {
+    await db.prepare('DELETE FROM audit_logs').run();
+  }
+  res.json({ success: true });
+});
+
 // --------------------------------------------------------------------------
 // 12. REPORTS & ANALYTICS
 // --------------------------------------------------------------------------
@@ -1530,7 +1623,7 @@ apiRouter.get('/reports/data', async (req: Request, res: Response) => {
     FROM users u
     LEFT JOIN work_orders wo ON wo.assigned_technician_id = u.id
     LEFT JOIN maintenance_reports mr ON mr.work_order_id = wo.id
-    WHERE u.role = 'technician'
+    WHERE u.role IN ('employee', 'technician')
     GROUP BY u.id
   `).all();
 

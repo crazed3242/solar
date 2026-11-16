@@ -13,9 +13,10 @@ import {
   ChevronRight,
   RefreshCw,
   LayoutList,
-  Kanban
+  Kanban,
+  Trash2
 } from 'lucide-react';
-import { WorkOrder, User as UserType, Equipment } from '../types';
+import { WorkOrder, User as UserType, Equipment, isEmployeeRole } from '../types';
 import { api } from '../services/api';
 import { formatPHTDate, formatCurrency, getStatusBadge, getPriorityBadge } from '../utils/formatters';
 import { useAuth } from '../context/AuthContext';
@@ -23,18 +24,24 @@ import { useAuth } from '../context/AuthContext';
 interface WorkOrdersViewProps {
   onSelectWorkOrder: (woId: number) => void;
   onCreateWorkOrder: () => void;
+  refreshKey?: number;
 }
 
 export const WorkOrdersView: React.FC<WorkOrdersViewProps> = ({
   onSelectWorkOrder,
   onCreateWorkOrder,
+  refreshKey = 0,
 }) => {
   const { currentUser } = useAuth();
   const isAdmin = currentUser?.role === 'admin';
+  const isManager = currentUser?.role === 'manager';
+  const isEmployee = isEmployeeRole(currentUser?.role);
 
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<'table' | 'kanban'>('table');
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
+  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   // Filters
   const [statusFilter, setStatusFilter] = useState('all');
@@ -61,7 +68,20 @@ export const WorkOrdersView: React.FC<WorkOrdersViewProps> = ({
 
   useEffect(() => {
     fetchWorkOrders();
-  }, [statusFilter, typeFilter, search]);
+  }, [statusFilter, typeFilter, search, refreshKey]);
+
+  const handleDeleteWorkOrder = async (e: React.MouseEvent, wo: WorkOrder) => {
+    e.stopPropagation();
+    setFeedback(null);
+    try {
+      await api.deleteWorkOrder(wo.id);
+      setConfirmDeleteId(null);
+      setFeedback({ type: 'success', message: `Deleted work order ${wo.work_order_code}.` });
+      await fetchWorkOrders();
+    } catch (err: any) {
+      setFeedback({ type: 'error', message: err.message || 'Failed to delete work order' });
+    }
+  };
 
   const kanbanColumns = [
     { id: 'open', label: 'Open', color: 'border-slate-500' },
@@ -111,12 +131,12 @@ export const WorkOrdersView: React.FC<WorkOrdersViewProps> = ({
             <RefreshCw className="w-4 h-4" />
           </button>
 
-          {isAdmin && (
+          {isManager && (
             <button
               onClick={onCreateWorkOrder}
               className="px-3.5 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 shadow-md transition-all"
             >
-              <Plus className="w-4 h-4" /> Create Work Order
+              <Plus className="w-4 h-4" /> Create & Assign Work Order
             </button>
           )}
         </div>
@@ -172,6 +192,21 @@ export const WorkOrdersView: React.FC<WorkOrdersViewProps> = ({
           Showing <strong className="text-slate-100">{workOrders.length}</strong> work orders
         </span>
       </div>
+
+      {feedback && (
+        <div
+          className={`p-3 rounded-xl border text-xs flex items-center justify-between gap-3 ${
+            feedback.type === 'success'
+              ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+              : 'bg-rose-500/15 border-rose-500/40 text-rose-300'
+          }`}
+        >
+          <span>{feedback.message}</span>
+          <button onClick={() => setFeedback(null)} className="text-[11px] font-mono opacity-80 hover:opacity-100 cursor-pointer">
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {/* Main Content: Table or Kanban */}
       {loading ? (
@@ -259,23 +294,58 @@ export const WorkOrdersView: React.FC<WorkOrdersViewProps> = ({
                     </td>
 
                     <td className="p-3.5 text-right font-mono">
-                      {!isAdmin && (!wo.assigned_technician_id || wo.status === 'open') ? (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (currentUser) {
-                              api.acceptWorkOrder(wo.id, currentUser.id).then(() => fetchWorkOrders());
-                            }
-                          }}
-                          className="px-2.5 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px] shadow-xs transition-colors"
-                        >
-                          ⚡ Accept
-                        </button>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 text-xs text-amber-400 group-hover:text-amber-300">
-                          Open <ChevronRight className="w-3.5 h-3.5" />
-                        </span>
-                      )}
+                      <div className="inline-flex items-center justify-end gap-2">
+                        {isEmployee && (!wo.assigned_technician_id || wo.status === 'open') ? (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (currentUser) {
+                                api.acceptWorkOrder(wo.id, currentUser.id).then(() => fetchWorkOrders());
+                              }
+                            }}
+                            className="px-2.5 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px] shadow-xs transition-colors"
+                          >
+                            ⚡ Accept
+                          </button>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-xs text-amber-400 group-hover:text-amber-300">
+                            Open <ChevronRight className="w-3.5 h-3.5" />
+                          </span>
+                        )}
+
+                        {isAdmin && (
+                          confirmDeleteId === wo.id ? (
+                            <div className="inline-flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                              <button
+                                onClick={(e) => handleDeleteWorkOrder(e, wo)}
+                                className="px-2 py-1 rounded bg-rose-600 hover:bg-rose-500 text-white font-bold text-[10px] cursor-pointer"
+                              >
+                                Confirm
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setConfirmDeleteId(null);
+                                }}
+                                className="px-2 py-1 rounded bg-slate-800 text-slate-300 text-[10px] cursor-pointer"
+                              >
+                                No
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setConfirmDeleteId(wo.id);
+                              }}
+                              title="Delete Work Order"
+                              className="p-1.5 rounded bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 transition-colors cursor-pointer"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );
